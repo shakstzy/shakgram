@@ -743,4 +743,66 @@ def get_list_stages_by_name(list_name, headers):
     return stages
 
 # Usage example:
-layer_stages = get_list_stages_by_name("Layer", headers)
+# layer_stages = get_list_stages_by_name("Layer", headers)
+
+def get_company_notes(company_name, headers):
+    """Get all notes associated with a company."""
+    # First get company ID
+    company_id = None
+    
+    # Get all companies and find matching one
+    url = "https://api.attio.com/v2/objects/companies/records/query"
+    try:
+        response = requests.post(url, headers=headers)
+        response.raise_for_status()
+        companies = response.json().get('data', [])
+        
+        # Find company by name (case insensitive)
+        for company in companies:
+            name = company.get('values', {}).get('name', [{}])[0].get('value', '')
+            if name.lower() == company_name.lower():
+                company_id = company['id']['record_id']
+                break
+        
+        if not company_id:
+            print(f"\nCompany '{company_name}' not found")
+            return None
+        
+        # Get notes for this company
+        notes_url = "https://api.attio.com/v2/notes"
+        response = requests.get(notes_url, headers=headers)
+        response.raise_for_status()
+        all_notes = response.json().get('data', [])
+        
+        # Filter notes for this company
+        company_notes = []
+        for note in all_notes:
+            if note.get('parent_object') == 'companies' and note.get('parent_record_id') == company_id:
+                company_notes.append({
+                    'title': note.get('title', 'Untitled'),
+                    'content': note.get('content_plaintext', ''),
+                    'created_at': note.get('created_at'),
+                    'note_id': note['id']['note_id']
+                })
+        
+        if company_notes:
+            print(f"\nNotes for {company_name}:")
+            print("-" * 50)
+            for note in company_notes:
+                print(f"Title: {note['title']}")
+                print(f"Created: {note['created_at']}")
+                print(f"Content:\n{note['content']}")
+                print("-" * 50)
+        else:
+            print(f"\nNo notes found for {company_name}")
+            
+        return company_notes
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching notes: {str(e)}")
+        if hasattr(e, 'response') and e.response is not None:
+            print("Response:", e.response.text)
+        return None
+
+# Usage example:
+notes = get_company_notes("Layer", headers)
