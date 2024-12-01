@@ -35,6 +35,11 @@ credentials = service_account.Credentials.from_service_account_file(
 drive_service = build('drive', 'v3', credentials=credentials)
 docs_service = build('docs', 'v1', credentials=credentials)
 
+headers = {
+    'Authorization': f'Bearer {attio_api_key}',
+    'Content-Type': 'application/json'
+}
+
 async def send_message(telegram, message, folder=None):
     # Find the user by username
     user = await client.get_entity(telegram)
@@ -42,6 +47,8 @@ async def send_message(telegram, message, folder=None):
     print(f"Last Name: {user.last_name}")
     # Send the message
     await client.send_message(user, message)
+# await send_message("@username", "Hello from the bot!")
+
 
 async def send_group_message(usernames, message, group_title="New Group"):
     try:
@@ -87,6 +94,23 @@ async def send_group_message(usernames, message, group_title="New Group"):
         print(f"An error occurred: {str(e)}")
         import traceback
         traceback.print_exc()
+# Example usage:
+# async def main():
+#     # List of telegram usernames to add to the group
+#     usernames = ["@user1", "@user2", "@user3"]
+#     # Message to send to the new group
+#     welcome_message = "Welcome to our new group! 👋"
+#     # Optional custom group title (defaults to "New Group")
+#     group_name = "Project Discussion Group"
+#     
+#     try:
+#         await send_group_message(usernames, welcome_message, group_name)
+#     except Exception as e:
+#         print(f"Error creating group: {str(e)}")
+#
+# # Run the async function
+# client.loop.run_until_complete(main())
+
 
 async def copy_google_doc_template(company_name, emails):
     """Copy a Google Doc template and return the link to the new document."""
@@ -124,6 +148,26 @@ async def copy_google_doc_template(company_name, emails):
     except Exception as e:
         print(f"An error occurred while copying the Google Doc: {str(e)}")
         return None
+# Example usage:
+# async def main():
+#     # Company name for the document title
+#     company_name = "Layer"
+#     # List of email addresses to share the document with
+#     emails = ["user@example.com", "team@example.com"]
+#     
+#     try:
+#         doc_link = await copy_google_doc_template(company_name, emails)
+#         if doc_link:
+#             print(f"Document created successfully!")
+#             print(f"Access it here: {doc_link}")
+#         else:
+#             print("Failed to create document")
+#     except Exception as e:
+#         print(f"Error creating document: {str(e)}")
+#
+# # Run the async function
+# client.loop.run_until_complete(main())
+
 
 async def replace_text_in_document(document_id, company_name, signatory_name):
     """Replace [operator] and [Signatory] in the document with the company name and signatory name, case-insensitively."""
@@ -154,6 +198,24 @@ async def replace_text_in_document(document_id, company_name, signatory_name):
     # Execute the batch update request
     result = docs_service.documents().batchUpdate(documentId=document_id, body={'requests': requests}).execute()
     print(f"Replaced [operator] with '{company_name}' and [Signatory] with '{signatory_name}' in document ID: {document_id}")
+# Example usage:
+# async def main():
+#     # Document ID from Google Docs URL
+#     document_id = "1234567890abcdef"  # Get this from the document URL
+#     # Company name to replace [operator] with
+#     company_name = "Layer Protocol"
+#     # Signatory name to replace [Signatory] with
+#     signatory_name = "John Smith"
+#     
+#     try:
+#         await replace_text_in_document(document_id, company_name, signatory_name)
+#         print("Successfully replaced text in document")
+#     except Exception as e:
+#         print(f"Error replacing text: {str(e)}")
+#
+# # Run the async function
+# client.loop.run_until_complete(main())
+
 
 async def share_document(document_id, emails):
     """Share the document with the specified email addresses."""
@@ -172,6 +234,25 @@ async def share_document(document_id, emails):
             print(f"Document shared with {email}")
     except Exception as e:
         print(f"An error occurred while sharing the document: {str(e)}")
+# Example usage:
+# async def main():
+#     # Document ID from Google Docs URL
+#     document_id = "1234567890abcdef"  # Get this from the document URL
+#     # List of email addresses to share with
+#     emails = [
+#         "team@example.com",
+#         "user@example.com"
+#     ]
+#     
+#     try:
+#         await share_document(document_id, emails)
+#         print("Document shared successfully!")
+#     except Exception as e:
+#         print(f"Error sharing document: {str(e)}")
+#
+# # Run the async function
+# client.loop.run_until_complete(main())
+
 
 async def transfer_ownership(document_id, new_owner_email):
     """Transfer ownership of the document to the specified email address."""
@@ -190,6 +271,22 @@ async def transfer_ownership(document_id, new_owner_email):
         print(f"Ownership of document ID {document_id} transferred to {new_owner_email}")
     except Exception as e:
         print(f"An error occurred while transferring ownership: {str(e)}")
+# Example usage:
+# async def main():
+#     # Document ID from Google Docs URL
+#     document_id = "1234567890abcdef"  # Get this from the document URL
+#     # Email address of the new owner
+#     new_owner_email = "newowner@example.com"
+#     
+#     try:
+#         await transfer_ownership(document_id, new_owner_email)
+#         print(f"Successfully transferred ownership to {new_owner_email}")
+#     except Exception as e:
+#         print(f"Error transferring ownership: {str(e)}")
+#
+# # Run the async function
+# client.loop.run_until_complete(main())
+
 
 async def copy_and_share_document(document_id, company_name, signatory_name):
     """Copy a Google Document, rename it, share it with the same users, and replace [operator] and [Signatory] with the company name and signatory name."""
@@ -231,6 +328,22 @@ async def copy_and_share_document(document_id, company_name, signatory_name):
 
     except Exception as e:
         print(f"An error occurred while copying and sharing the document: {str(e)}")
+# Example usage:
+# async def main():
+#     # Document ID from Google Docs URL
+#     document_id = "1234567890abcdef"  # Get this from the document URL
+#     company_name = "Acme Corp"  # Company name to replace [operator]
+#     signatory_name = "John Smith"  # Signatory name to replace [Signatory]
+#     
+#     try:
+#         await copy_and_share_document(document_id, company_name, signatory_name)
+#         print("Document copied, renamed, shared and updated successfully")
+#     except Exception as e:
+#         print(f"Error copying and sharing document: {str(e)}")
+#
+# # Run the async function
+# client.loop.run_until_complete(main())
+
 
 def get_attio_lists(headers):
     """Fetch all lists from Attio and return them."""
@@ -246,6 +359,13 @@ def get_attio_lists(headers):
     else:
         print(f"Error fetching lists: {response.status_code}")
         return None
+# Example usage:
+# headers = {'Authorization': f'Bearer {attio_api_key}'}
+# lists = get_attio_lists(headers)
+# if lists:
+#     list_id = choose_list(lists)
+#     print(f"Selected list ID: {list_id}")
+
 
 def choose_list(lists):
     """Allow the user to choose a list by ID."""
@@ -262,17 +382,19 @@ def choose_list(lists):
                 print("Invalid selection. Please choose a number from the list.")
         except ValueError:
             print("Please enter a valid number.")
+# Example usage:
+# headers = {'Authorization': f'Bearer {attio_api_key}'}
+# lists = get_attio_lists(headers)
+# if lists:
+#     list_id = choose_list(lists)
+#     entries = get_list_entries_with_companies(list_id, headers)
+#     if entries:
+#         print(f"\nFound {len(entries)} entries")
+#         for entry in entries:
+#             company_id = entry.get('parent_record_id')
+#             company_name = get_company_name(company_id, headers)
+#             print(f"Company: {company_name}")
 
-def get_company_name(company_id, headers):
-    """Fetch a single company's name by ID."""
-    url = f"https://api.attio.com/v2/objects/companies/records/{company_id}"
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        company_data = response.json().get('data', {})
-        return company_data.get('values', {}).get('name', [{}])[0].get('value', 'Unknown')
-    except:
-        return 'Unknown'
 
 def get_list_entries_with_companies(list_id, headers):
     """Fetch all entries and look up company names in parallel."""
@@ -332,6 +454,21 @@ def get_list_entries_with_companies(list_id, headers):
     except requests.exceptions.RequestException as e:
         print(f"Error fetching data: {str(e)}")
         return None
+# entries = get_list_entries_with_companies(list_id, headers)
+
+
+def get_company_name(company_id, headers):
+    """Fetch a single company's name by ID."""
+    url = f"https://api.attio.com/v2/objects/companies/records/{company_id}"
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        company_data = response.json().get('data', {})
+        return company_data.get('values', {}).get('name', [{}])[0].get('value', 'Unknown')
+    except:
+        return 'Unknown'
+# company_name = get_company_name(company_id, headers)
+
 
 def get_list_stages(list_id, headers):
     """Fetch all stages for a list."""
@@ -382,6 +519,8 @@ def get_list_stages(list_id, headers):
         if hasattr(e, 'response') and e.response is not None:
             print("Response:", e.response.text)
         return None
+# stages = get_list_stages(list_id, headers)
+
 
 def update_entry_stage(list_id, entry_id, new_stage_name, headers):
     """Update the stage of a list entry using stage name."""
@@ -408,6 +547,19 @@ def update_entry_stage(list_id, entry_id, new_stage_name, headers):
         if hasattr(e, 'response') and e.response is not None:
             print("Response:", e.response.text)
         return None
+# # List ID from Attio
+# list_id = "lst_01HQ7V4KXYT5GXDMJ5QWVZ8X9Y"
+# # Entry ID to update
+# entry_id = "ent_01HQ7V4KXYT5GXDMJ5QWVZ8X9Y"
+# # New stage name (e.g., "Email Sent", "Meeting Scheduled", etc.)
+# new_stage = "Email Sent"
+# 
+# result = update_entry_stage(list_id, entry_id, new_stage, headers)
+# if result:
+#     print(f"Successfully updated stage to: {new_stage}")
+# else:
+#     print("Failed to update stage")
+
 
 def fetch_all_companies(headers, filter_tag=None):
     """Fetch all companies and optionally filter by tag."""
@@ -450,7 +602,8 @@ def fetch_all_companies(headers, filter_tag=None):
         if filter_tag:
             for company in all_companies:
                 values = company.get('values', {})
-                name = values.get('name', [{}])[0].get('value', 'Unknown') if values.get('name') else 'Unknown'
+                name_list = values.get('name', [])
+                name = name_list[0].get('value', '') if name_list else ''
                 record_id = company['id']['record_id']
                 tags = [tag['option']['title'] for tag in values.get('project_tag_5', [])]
                 
@@ -481,25 +634,6 @@ def fetch_all_companies(headers, filter_tag=None):
         if hasattr(e, 'response') and e.response is not None:
             print("Response:", e.response.text)
         return None
-
-headers = {
-    'Authorization': f'Bearer {attio_api_key}',
-    'Content-Type': 'application/json'
-}
-
-# Example usage:
-# list_id = "00f50bb3-70d6-40f2-9165-712acdc33c24"
-# entries = get_list_entries_with_companies(list_id, headers)
-
-# update_entry_stage(
-#     "00f50bb3-70d6-40f2-9165-712acdc33c24",  # list_id
-#     "fd569bb3-5bbb-5710-8bb0-46af4160f680",  # entry_id
-#     "Follow Up",  # stage name
-#     headers
-# )
-
-# stages = get_list_stages(list_id, headers)
-
 # tag_name = "Node Operator"  # Specify the tag name you want to filter by
 # companies = fetch_companies_by_tag(tag_name, headers)
 
@@ -509,6 +643,7 @@ headers = {
 
 # Or fetch companies with specific tag
 # companies = fetch_all_companies(headers, filter_tag="AI")
+
 
 def get_last_telegram_message(chat_identifier):
     """Helper function to get last message info from a Telegram chat."""
@@ -563,9 +698,22 @@ def get_last_telegram_message(chat_identifier):
     except Exception as e:
         print(f"Error: {str(e)}")
         return None
-
-# Example usage
-# message_info = get_last_telegram_message("Adi <> Chainsight")
+# async def main():
+#     # Can use username or chat ID
+#     chat_identifier = "@username"  # or numeric chat ID like "123456789"
+#     
+#     try:
+#         message_info = await get_last_telegram_message(chat_identifier)
+#         if message_info:
+#             print("\nLast Message Info:")
+#             print(f"Time: {message_info['timestamp']}")
+#             print(f"Hours elapsed: {message_info['hours_elapsed']:.2f}")
+#             print(f"Sender: {message_info['sender']}")
+#             print(f"Message: {message_info['message']}")
+#         else:
+#             print("No messages found")
+#     except Exception as e:
+#         print(f"Error getting last message: {str(e)}")
 
 def get_list_entries_by_stage(headers, list_name, stage_name):
     """Get all entries from a specified list with a specific stage status."""
@@ -617,57 +765,140 @@ def get_list_entries_by_stage(headers, list_name, stage_name):
         print("-" * 50)
     
     return matching_companies
+# Example usage:
+# companies = get_list_entries_by_stage(headers, "Layer", "Email Sent")
 
-def get_company_telegram_handles(company_name, headers):
+def get_company_telegram_handles(company_identifier, headers, is_id=False):
     """Get telegram handles for employees of a company."""
     url = "https://api.attio.com/v2/objects/people/records/query"
-    domain = f"{company_name.strip().lower()}.com"
     
     try:
-        response = requests.post(url, headers=headers)
-        response.raise_for_status()
-        data = response.json()
+        # First get all companies to ensure we find the right one
+        print("\nFetching all companies...")
+        all_companies = fetch_all_companies(headers)
+        if not all_companies:
+            print("Error fetching companies")
+            return None
+            
+        # Find the company and get all its domains
+        company_name = None
+        company_domains = set()
         
+        for company in all_companies:
+            values = company.get('values', {})
+            name_list = values.get('name', [])
+            name = name_list[0].get('value', '') if name_list else ''
+            
+            # Match by ID or name
+            if (is_id and company['id']['record_id'] == company_identifier) or \
+               (not is_id and name and name.lower() == company_identifier.lower()):
+                company_name = name
+                domains = values.get('domains', [])
+                for domain in domains:
+                    domain_name = domain.get('domain')
+                    if domain_name:
+                        company_domains.add(domain_name)
+                company_domains.update([
+                    f"{name.strip().lower()}.com",
+                    f"{name.strip().lower()}.xyz",
+                    f"{name.strip().lower()}.io"
+                ])
+                break
+            
+        if not company_name:
+            print(f"Could not find company: {company_identifier}")
+            return None
+            
+        print(f"\nFound company: {company_name}")
+        print(f"Looking for domains: {sorted(company_domains)}")
+        
+        # Get all people using pagination
+        print("\nFetching all people records...")
+        all_people = []
+        offset = 0
+        limit = 500
+        
+        while True:
+            payload = {
+                "include_values": ["name", "email_addresses", "telegram"],
+                "pagination": {
+                    "limit": limit,
+                    "offset": offset
+                }
+            }
+            
+            response = requests.post(url, headers=headers, json=payload)
+            response.raise_for_status()
+            data = response.json()
+            
+            people_batch = data.get('data', [])
+            if not people_batch:
+                break
+                
+            all_people.extend(people_batch)
+            print(f"Fetched {len(all_people)} people records...")
+            
+            if len(people_batch) < limit:
+                break
+                
+            offset += len(people_batch)
+        
+        # Analyze domains from all people
+        print("\nAnalyzing email domains...")
+        all_domains = set()
+        domain_count = 0
+        for record in all_people:
+            email_addresses = record.get('values', {}).get('email_addresses', [])
+            for email in email_addresses:
+                domain = email.get('email_domain')
+                if domain:
+                    all_domains.add(domain)
+                    domain_count += 1
+        
+        print(f"Total email domains found: {domain_count}")
+        print(f"Unique domains found: {len(all_domains)}")
+        print("All domains:", sorted(all_domains))
+        
+        # Find matching people
         telegram_info = []
-        for record in data.get('data', []):
+        for record in all_people:
             values = record.get('values', {})
-            
-            # Check if person has email with matching domain
             email_addresses = values.get('email_addresses', [])
-            has_company_email = any(
-                email.get('email_domain') == domain 
-                for email in email_addresses
-            )
             
-            if has_company_email:
+            matching_domains = [
+                email.get('email_domain') for email in email_addresses
+                if email.get('email_domain') in company_domains
+            ]
+            
+            if matching_domains:
                 telegram_entries = values.get('telegram', [])
                 if telegram_entries:
                     telegram = telegram_entries[0].get('value')
                     if telegram:
-                        # Get name from personal-name field
                         name_entries = values.get('name', [])
                         full_name = 'Unknown'
                         if name_entries:
                             name_data = name_entries[0]
                             first_name = name_data.get('first_name', '')
                             last_name = name_data.get('last_name', '')
-                            # Use full_name if available, otherwise combine first and last
                             full_name = name_data.get('full_name') or f"{first_name} {last_name}".strip()
                         
                         telegram_info.append({
                             'handle': telegram,
                             'name': full_name,
-                            'email_domain': domain
+                            'email_domain': matching_domains[0],
+                            'company_name': company_name
                         })
         
         if telegram_info:
-            print(f"\nFound {len(telegram_info)} telegram handles for {domain} employees:")
+            print(f"\nFound {len(telegram_info)} telegram handles for {company_name}:")
             for info in telegram_info:
                 print(f"Name: {info['name']}")
                 print(f"Telegram: @{info['handle']}")
+                print(f"Email Domain: {info['email_domain']}")
                 print("-" * 50)
         else:
-            print(f"\nNo telegram handles found for {domain} employees")
+            print(f"\nNo telegram handles found for {company_name}")
             
         return telegram_info
         
@@ -676,19 +907,49 @@ def get_company_telegram_handles(company_name, headers):
         if hasattr(e, 'response') and e.response is not None:
             print("Response:", e.response.text)
         return None
+# Example usage:
+# Get telegram handles for a single company
+# telegram_handles = get_company_telegram_handles("Company Name", headers)
+
+# Get telegram handles for multiple companies
+# companies = [
+#     {"company_name": "Company 1"},
+#     {"company_name": "Company 2"}
+# ]
+# all_handles = get_company_telegrams(companies, headers)
+
+# Get telegram handles by company ID
+# telegram_handles = get_company_telegram_handles("company_id", headers, is_id=True)
+
 
 def get_company_telegrams(companies, headers):
     """Get telegram handles for a list of companies."""
     all_telegram_handles = []
     
+    # Handle both list of companies and single company name
+    if isinstance(companies, str):
+        companies = [{'company_name': companies}]
+    elif not isinstance(companies, list):
+        print("Invalid input: companies must be a string or list of companies")
+        return None
+
     print("\nFetching telegram handles for companies...")
     for company in companies:
-        print(f"\nLooking up telegram handles for {company['name']}:")
-        telegram_handles = get_company_telegram_handles(company['name'], headers)
+        # Handle both name and ID based company objects
+        company_name = company.get('company_name') or company.get('name')
+        company_id = company.get('company_id') or company.get('id')
+        
+        if not company_name:
+            # If no name found, try to get it from ID
+            company_name = get_company_name(company_id, headers)
+            
+        print(f"\nLooking up telegram handles for {company_name}:")
+        telegram_handles = get_company_telegram_handles(company_name, headers)
+        
         if telegram_handles:
             all_telegram_handles.extend([{
-                'company_name': company['name'],
-                'company_id': company['id'],
+                'company_name': company_name,
+                'company_id': company_id,
                 'telegram_handle': handle['handle'],
                 'person_name': handle['name']
             } for handle in telegram_handles])
@@ -703,7 +964,6 @@ def get_company_telegrams(companies, headers):
             print("-" * 50)
     
     return all_telegram_handles
-
 # Usage example:
 # Get companies from list
 # companies = get_list_entries_by_stage(headers, "Layer", "Email Sent")
@@ -725,6 +985,12 @@ def get_list_id_by_name(list_name, headers):
         return None
         
     return target_list['id']['list_id']
+# Example usage:
+# Get list ID for "Layer" list
+# list_id = get_list_id_by_name("Layer", headers)
+# if list_id:
+#     print(f"Found list ID: {list_id}")
+
 
 def get_list_stages_by_name(list_name, headers):
     """Get all stages for a list using list name."""
@@ -741,7 +1007,6 @@ def get_list_stages_by_name(list_name, headers):
             print("-" * 30)
     
     return stages
-
 # Usage example:
 # layer_stages = get_list_stages_by_name("Layer", headers)
 
@@ -759,7 +1024,8 @@ def get_company_notes(company_name, headers):
         
         # Find company by name (case insensitive)
         for company in companies:
-            name = company.get('values', {}).get('name', [{}])[0].get('value', '')
+            name_list = company.get('values', {}).get('name', [])
+            name = name_list[0].get('value', '') if name_list else ''
             if name.lower() == company_name.lower():
                 company_id = company['id']['record_id']
                 break
@@ -803,6 +1069,105 @@ def get_company_notes(company_name, headers):
         if hasattr(e, 'response') and e.response is not None:
             print("Response:", e.response.text)
         return None
+# Example usage:
+# notes = get_company_notes("Company Name", headers)
 
-# Usage example:
-notes = get_company_notes("Layer", headers)
+def get_companies_by_list_status(list_name, status, headers):
+    """Get all companies in a specified list with a specific status.
+    
+    Args:
+        list_name: Name of the list (e.g., "Layer")
+        status: Status to filter by (e.g., "Email Sent")
+        headers: API headers
+    
+    Returns:
+        list: List of companies with their details
+    """
+    # First get list ID
+    list_id = get_list_id_by_name(list_name, headers)
+    if not list_id:
+        print(f"Could not find list: {list_name}")
+        return None
+    
+    # Get all entries from the list
+    entries = get_list_entries_with_companies(list_id, headers)
+    if not entries:
+        print(f"No entries found in list: {list_name}")
+        return None
+    
+    # Filter entries by status
+    matching_companies = []
+    for entry in entries:
+        entry_values = entry.get('entry_values', {})
+        current_status = entry_values.get('stage', [{}])[0].get('status', {}).get('title', '')
+        
+        if current_status.lower() == status.lower():  # Case insensitive comparison
+            company_id = entry.get('parent_record_id')
+            company_name = get_company_name(company_id, headers)
+            
+            matching_companies.append({
+                'company_id': company_id,
+                'company_name': company_name,
+                'entry_id': entry['id']['entry_id'],
+                'list_name': list_name,
+                'status': current_status
+            })
+    
+    # Print results
+    if matching_companies:
+        print(f"\nFound {len(matching_companies)} companies in '{list_name}' with status '{status}':")
+        print("-" * 50)
+        for company in matching_companies:
+            print(f"Company: {company['company_name']}")
+            print(f"Company ID: {company['company_id']}")
+            print(f"Entry ID: {company['entry_id']}")
+            print("-" * 50)
+    else:
+        print(f"\nNo companies found in '{list_name}' with status '{status}'")
+    
+    return matching_companies
+# Get all companies in the "Layer" list with status "Email Sent"
+# companies = get_companies_by_list_status("Layer", "Email Sent", headers)
+# if companies:
+#     for company in companies:
+#         print(f"Company: {company['company_name']}")
+#         print(f"Status: {company['status']}")
+#         print(f"Entry ID: {company['entry_id']}")
+
+
+def get_company_id_by_name(company_name, headers):
+    """Get company ID from company name (case insensitive).
+    
+    Args:
+        company_name (str): Name of the company to look up
+        headers (dict): API headers
+        
+    Returns:
+        str: Company ID if found, None otherwise
+    """
+    try:
+        # Use existing fetch_all_companies helper
+        companies = fetch_all_companies(headers)
+        if not companies:
+            print("Error fetching companies")
+            return None
+        
+        # Find matching company (case insensitive)
+        for company in companies:
+            name_list = company.get('values', {}).get('name', [])
+            name = name_list[0].get('value', '') if name_list else ''
+            if name.lower() == company_name.lower():
+                company_id = company['id']['record_id']
+                print(f"\nFound company: {name}")
+                print(f"ID: {company_id}")
+                return company_id
+        
+        print(f"\nCompany '{company_name}' not found")
+        return None
+        
+    except Exception as e:
+        print(f"Error getting company ID: {str(e)}")
+        return None
+# company_id = get_company_id_by_name("DxPool", headers)
+
+
