@@ -805,4 +805,4 @@ def get_company_notes(company_name, headers):
         return None
 
 # Usage example:
-notes = get_company_notes("Layer", headers)
+# notes = get_company_notes("Layer", headers)
