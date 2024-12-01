@@ -1,0 +1,8 @@
+# Ignore Google Cloud Service Account Credentials
+google.json
+
+# Ignore any other sensitive files
+*.env
+*.session
+secrets.json
+googledrive.json
