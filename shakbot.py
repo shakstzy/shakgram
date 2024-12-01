@@ -8,6 +8,8 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 import re  # Make sure to import the re module for regular expressions
 import concurrent.futures
+from datetime import datetime, timezone
+import json
 
 # Get API credentials from environment variables
 api_id = os.getenv('TELEGRAM_API_ID')
@@ -230,7 +232,6 @@ async def copy_and_share_document(document_id, company_name, signatory_name):
     except Exception as e:
         print(f"An error occurred while copying and sharing the document: {str(e)}")
 
-
 def get_attio_lists(headers):
     """Fetch all lists from Attio and return them."""
     url = "https://api.attio.com/v2/lists"
@@ -408,60 +409,19 @@ def update_entry_stage(list_id, entry_id, new_stage_name, headers):
             print("Response:", e.response.text)
         return None
 
-def fetch_companies_by_tag(tag_name, headers):
-    """Fetch companies that have the specified tag as one of their tags."""
-    url = "https://api.attio.com/v2/objects/companies/records/query"
-    
-    payload = {
-        "filter": {
-            "project_tag_5": {
-                "$elemMatch": {
-                    "option.title": tag_name
-                }
-            }
-        },
-        "include_values": ["name", "project_tag_5"]
-    }
-    
-    try:
-        response = requests.post(url, headers=headers, json=payload)
-        response.raise_for_status()
-        companies = response.json().get('data', [])
-        
-        print(f"\nFound {len(companies)} companies with tag '{tag_name}':")
-        for company in companies:
-            name = 'Unknown'
-            name_values = company.get('values', {}).get('name', [])
-            if name_values and len(name_values) > 0:
-                name = name_values[0].get('value', 'Unknown')
-            
-            tags = [tag['option']['title'] for tag in company.get('values', {}).get('project_tag_5', [])]
-            
-            print(f"\nCompany: {name}")
-            print(f"ID: {company['id']['record_id']}")
-            print(f"Tags: {', '.join(tags)}")
-            print("-" * 30)
-        
-        return companies
-        
-    except requests.exceptions.RequestException as e:
-        print(f"Error: {str(e)}")
-        if hasattr(e, 'response') and e.response is not None:
-            print("Response:", e.response.text)
-        return None
-
-def fetch_all_companies(headers):
-    """Fetch all companies using proper pagination."""
+def fetch_all_companies(headers, filter_tag=None):
+    """Fetch all companies and optionally filter by tag."""
     url = "https://api.attio.com/v2/objects/companies/records/query"
     
     all_companies = []
-    offset = 0  # Start from 500
-    limit = 500  # Maximum limit per request
+    filtered_companies = []
+    offset = 0
+    limit = 500
     
     try:
         while True:
             payload = {
-                "include_values": ["name"],
+                "include_values": ["name", "project_tag_5"],
                 "limit": limit,
                 "offset": offset
             }
@@ -472,35 +432,48 @@ def fetch_all_companies(headers):
                 data = response.json()
                 
                 companies_batch = data.get('data', [])
-                batch_size = len(companies_batch)
-                
-                if batch_size == 0:  # No more results
-                    print(f"\nNo more companies found at offset {offset}")
+                if not companies_batch:
                     break
                 
                 all_companies.extend(companies_batch)
-                print(f"\nFetched batch of {batch_size} companies (total fetched: {len(all_companies)})")
+                offset += len(companies_batch)
                 
-                # Print companies from this batch
-                for company in companies_batch:
-                    values = company.get('values', {})
-                    name_list = values.get('name', [])
-                    name = name_list[0].get('value', 'Unknown') if name_list else 'Unknown'
-                    print(f"- {name}")
-                
-                if batch_size < limit:  # Last page
-                    print("\nReached last page of results")
+                if len(companies_batch) < limit:
                     break
-                
-                offset += batch_size  # Increment offset by actual batch size
                 
             except requests.exceptions.HTTPError as e:
-                if e.response.status_code == 400:  # Offset too large
-                    print(f"\nReached end of results (offset {offset} too large)")
+                if e.response.status_code == 400:
                     break
-                raise  # Re-raise other HTTP errors
+                raise
         
-        print(f"\nTotal companies fetched after offset 500: {len(all_companies)}")
+        # Process all companies at once
+        if filter_tag:
+            for company in all_companies:
+                values = company.get('values', {})
+                name = values.get('name', [{}])[0].get('value', 'Unknown') if values.get('name') else 'Unknown'
+                record_id = company['id']['record_id']
+                tags = [tag['option']['title'] for tag in values.get('project_tag_5', [])]
+                
+                if filter_tag in tags:
+                    filtered_companies.append({
+                        'name': name,
+                        'id': record_id,
+                        'tags': tags
+                    })
+            
+            # Print results in one go
+            total_found = len(filtered_companies)
+            print(f"\nCompanies with tag '{filter_tag}':")
+            print("-" * 80)  # Wider separator for better readability
+            for company in filtered_companies:
+                print(f"Record ID: {company['id']}")
+                print(f"Company: {company['name']}")
+                print(f"Tags: {', '.join(company['tags'])}")
+                print("-" * 80)
+            print(f"\nTotal companies found with tag '{filter_tag}': {total_found}")
+            
+            return filtered_companies
+            
         return all_companies
         
     except requests.exceptions.RequestException as e:
@@ -515,7 +488,7 @@ headers = {
 }
 
 # Example usage:
-list_id = "00f50bb3-70d6-40f2-9165-712acdc33c24"
+# list_id = "00f50bb3-70d6-40f2-9165-712acdc33c24"
 # entries = get_list_entries_with_companies(list_id, headers)
 
 # update_entry_stage(
@@ -531,7 +504,243 @@ list_id = "00f50bb3-70d6-40f2-9165-712acdc33c24"
 # companies = fetch_companies_by_tag(tag_name, headers)
 
 # Usage:
-# companies = fetch_companies_by_tag("Tooling", headers)
-fetch_all_companies(headers)
+# Fetch all companies
+# companies = fetch_all_companies(headers)
 
-client.disconnect()
+# Or fetch companies with specific tag
+# companies = fetch_all_companies(headers, filter_tag="AI")
+
+def get_last_telegram_message(chat_identifier):
+    """Helper function to get last message info from a Telegram chat."""
+    async def _get_message_info(chat_identifier):
+        try:
+            # Use the existing authorized client
+            chat = await client.get_entity(chat_identifier)
+            messages = await client.get_messages(chat, limit=1)
+            
+            if messages and len(messages) > 0:
+                last_message = messages[0]
+                timestamp = last_message.date
+                
+                now = datetime.now(timezone.utc)
+                time_diff = now - timestamp
+                hours_elapsed = time_diff.total_seconds() / 3600
+                
+                sender = await last_message.get_sender()
+                sender_name = f"{getattr(sender, 'first_name', '')} {getattr(sender, 'last_name', '')}".strip()
+                if not sender_name and hasattr(sender, 'title'):
+                    sender_name = sender.title
+                
+                message_text = last_message.message if hasattr(last_message, 'message') else "No text content"
+                
+                return {
+                    'timestamp': timestamp,
+                    'hours_elapsed': hours_elapsed,
+                    'sender': sender_name,
+                    'message': message_text
+                }
+            return None
+            
+        except Exception as e:
+            print(f"Error getting message info: {str(e)}")
+            return None
+
+    # Use the existing event loop
+    try:
+        result = client.loop.run_until_complete(_get_message_info(chat_identifier))
+        
+        if result:
+            print(f"\nLast Message Info:")
+            print("-" * 50)
+            print(f"Time: {result['timestamp']}")
+            print(f"Hours elapsed: {result['hours_elapsed']:.2f}")
+            print(f"Sender: {result['sender']}")
+            print(f"Message: {result['message']}")
+            print("-" * 50)
+            
+        return result
+        
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return None
+
+# Example usage
+# message_info = get_last_telegram_message("Adi <> Chainsight")
+
+def get_list_entries_by_stage(headers, list_name, stage_name):
+    """Get all entries from a specified list with a specific stage status."""
+    
+    # Get all lists and find the specified list
+    lists = get_attio_lists(headers)
+    if not lists:
+        return None
+        
+    # Case insensitive match for list name
+    target_list = next((lst for lst in lists if lst.get('name', '').lower() == list_name.lower()), None)
+    if not target_list:
+        print(f"\nList '{list_name}' not found")
+        return None
+        
+    list_id = target_list['id']['list_id']
+    
+    # Get all entries from the list
+    entries = get_list_entries_with_companies(list_id, headers)
+    if not entries:
+        return None
+        
+    # Filter entries by stage status and extract company info
+    matching_companies = []
+    
+    for entry in entries:
+        entry_values = entry.get('entry_values', {})
+        current_stage = entry_values.get('stage', [{}])[0].get('status', {}).get('title', '')
+        
+        if current_stage == stage_name:
+            company_id = entry.get('parent_record_id')
+            company_name = get_company_name(company_id, headers)
+            matching_companies.append({
+                'id': company_id,
+                'name': company_name,
+                'entry_id': entry['id']['entry_id'],
+                'list_name': list_name,
+                'stage': stage_name
+            })
+    
+    print(f"\nCompanies in '{list_name}' with stage '{stage_name}':")
+    print("-" * 50)
+    for company in matching_companies:
+        print(f"Company: {company['name']}")
+        print(f"Company ID: {company['id']}")
+        print(f"Entry ID: {company['entry_id']}")
+        print(f"List: {company['list_name']}")
+        print(f"Stage: {company['stage']}")
+        print("-" * 50)
+    
+    return matching_companies
+
+def get_company_telegram_handles(company_name, headers):
+    """Get telegram handles for employees of a company."""
+    url = "https://api.attio.com/v2/objects/people/records/query"
+    domain = f"{company_name.strip().lower()}.com"
+    
+    try:
+        response = requests.post(url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        
+        telegram_info = []
+        for record in data.get('data', []):
+            values = record.get('values', {})
+            
+            # Check if person has email with matching domain
+            email_addresses = values.get('email_addresses', [])
+            has_company_email = any(
+                email.get('email_domain') == domain 
+                for email in email_addresses
+            )
+            
+            if has_company_email:
+                telegram_entries = values.get('telegram', [])
+                if telegram_entries:
+                    telegram = telegram_entries[0].get('value')
+                    if telegram:
+                        # Get name from personal-name field
+                        name_entries = values.get('name', [])
+                        full_name = 'Unknown'
+                        if name_entries:
+                            name_data = name_entries[0]
+                            first_name = name_data.get('first_name', '')
+                            last_name = name_data.get('last_name', '')
+                            # Use full_name if available, otherwise combine first and last
+                            full_name = name_data.get('full_name') or f"{first_name} {last_name}".strip()
+                        
+                        telegram_info.append({
+                            'handle': telegram,
+                            'name': full_name,
+                            'email_domain': domain
+                        })
+        
+        if telegram_info:
+            print(f"\nFound {len(telegram_info)} telegram handles for {domain} employees:")
+            for info in telegram_info:
+                print(f"Name: {info['name']}")
+                print(f"Telegram: @{info['handle']}")
+                print("-" * 50)
+        else:
+            print(f"\nNo telegram handles found for {domain} employees")
+            
+        return telegram_info
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching telegram handles: {str(e)}")
+        if hasattr(e, 'response') and e.response is not None:
+            print("Response:", e.response.text)
+        return None
+
+def get_company_telegrams(companies, headers):
+    """Get telegram handles for a list of companies."""
+    all_telegram_handles = []
+    
+    print("\nFetching telegram handles for companies...")
+    for company in companies:
+        print(f"\nLooking up telegram handles for {company['name']}:")
+        telegram_handles = get_company_telegram_handles(company['name'], headers)
+        if telegram_handles:
+            all_telegram_handles.extend([{
+                'company_name': company['name'],
+                'company_id': company['id'],
+                'telegram_handle': handle['handle'],
+                'person_name': handle['name']
+            } for handle in telegram_handles])
+    
+    if all_telegram_handles:
+        print("\nAll Telegram Handles Found:")
+        print("-" * 50)
+        for handle in all_telegram_handles:
+            print(f"Company: {handle['company_name']}")
+            print(f"Person: {handle['person_name']}")
+            print(f"Telegram: @{handle['telegram_handle']}")
+            print("-" * 50)
+    
+    return all_telegram_handles
+
+# Usage example:
+# Get companies from list
+# companies = get_list_entries_by_stage(headers, "Layer", "Email Sent")
+# print(companies)
+# # Then get their telegram handles if needed
+# if companies:
+#     telegram_handles = get_company_telegrams(companies, headers)
+
+def get_list_id_by_name(list_name, headers):
+    """Get list ID from list name (case insensitive)."""
+    lists = get_attio_lists(headers)
+    if not lists:
+        print("Error fetching lists")
+        return None
+        
+    target_list = next((lst for lst in lists if lst.get('name', '').lower() == list_name.lower()), None)
+    if not target_list:
+        print(f"\nList '{list_name}' not found")
+        return None
+        
+    return target_list['id']['list_id']
+
+def get_list_stages_by_name(list_name, headers):
+    """Get all stages for a list using list name."""
+    list_id = get_list_id_by_name(list_name, headers)
+    if not list_id:
+        return None
+        
+    stages = get_list_stages(list_id, headers)
+    if stages:
+        print(f"\nStages in {list_name} list:")
+        for stage_name, stage_id in stages.items():
+            print(f"Stage: {stage_name}")
+            print(f"ID: {stage_id}")
+            print("-" * 30)
+    
+    return stages
+
+# Usage example:
+layer_stages = get_list_stages_by_name("Layer", headers)
