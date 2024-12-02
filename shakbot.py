@@ -1,6 +1,7 @@
 from telethon import TelegramClient, sync
 from telethon.tl.types import InputPeerUser
-from telethon.tl.functions.messages import CreateChatRequest
+from telethon.tl.functions.messages import CreateChatRequest, UpdateDialogFilterRequest
+from telethon.tl.types import DialogFilter, InputPeerChannel, InputPeerUser, InputPeerChat
 import os
 import asyncio
 import requests
@@ -10,6 +11,21 @@ import re  # Make sure to import the re module for regular expressions
 import concurrent.futures
 from datetime import datetime, timezone
 import json
+from docusign_esign import ApiClient, EnvelopesApi, EnvelopeDefinition
+import base64
+from docusign_esign.models.document import Document
+from docusign_esign.models.signer import Signer
+from docusign_esign.models.tabs import Tabs
+from docusign_esign.models.sign_here import SignHere
+from docusign_esign.models.recipients import Recipients
+from docusign_esign.models.envelope_definition import EnvelopeDefinition
+import time
+import cv2
+import numpy as np
+from telethon.tl.types import InputFile
+from io import BytesIO
+from telethon import functions  # Add this import at the top
+import random  # Add this import at the top
 
 # Get API credentials from environment variables
 api_id = os.getenv('TELEGRAM_API_ID')
@@ -49,8 +65,71 @@ async def send_message(telegram, message, folder=None):
     await client.send_message(user, message)
 # await send_message("@username", "Hello from the bot!")
 
+async def has_face(photo):
+    """Check if an image contains a face."""
+    try:
+        # Get image bytes
+        image_data = await client.download_media(photo, bytes)
+        nparr = np.frombuffer(image_data, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        # Load face detection classifier
+        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+        
+        # Convert to grayscale
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        # Detect faces
+        faces = face_cascade.detectMultiScale(gray, 1.1, 4)
+        
+        return len(faces) > 0
+        
+    except Exception as e:
+        print(f"Error checking for faces: {str(e)}")
+        return False
+
+async def is_group_photo(photo):
+    """Check if an image is likely a group photo (multiple faces)."""
+    try:
+        # Get image bytes
+        image_data = await client.download_media(photo, bytes)
+        nparr = np.frombuffer(image_data, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        # Load face detection classifier
+        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+        
+        # Convert to grayscale
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        # Detect faces
+        faces = face_cascade.detectMultiScale(gray, 1.1, 4)
+        
+        # Check if it's a group photo (2 or more faces)
+        if len(faces) >= 2:
+            # Calculate average face size
+            face_areas = [w * h for (x, y, w, h) in faces]
+            avg_face_area = sum(face_areas) / len(faces)
+            image_area = img.shape[0] * img.shape[1]
+            avg_face_ratio = avg_face_area / image_area
+            
+            # Faces should be:
+            # 1. Not too small (each >2% of image)
+            # 2. Not too large (each <40% of image)
+            # 3. Similar sizes (within 50% of average)
+            is_good_size = 0.02 < avg_face_ratio < 0.4
+            similar_sizes = all(abs(area - avg_face_area) / avg_face_area < 0.5 for area in face_areas)
+            
+            return is_good_size and similar_sizes
+            
+        return False
+        
+    except Exception as e:
+        print(f"Error checking for group photo: {str(e)}")
+        return False
 
 async def send_group_message(usernames, message, group_title="New Group"):
+    """Create a group chat and send welcome message."""
     try:
         # Create a new group chat
         print(f"Creating group: {group_title}")
@@ -74,43 +153,16 @@ async def send_group_message(usernames, message, group_title="New Group"):
             if dialog.title == group_title:
                 group_entity = dialog.entity
                 # Send initial message
-                await client.send_message(group_entity, message)
+                welcome_msg = await client.send_message(group_entity, message)
                 print("Initial message sent successfully")
                 break
         
-        if group_entity:
-            # For each user, find their first image and send it to the group
-            for user in user_entities:
-                print(f"Searching for images in chat with {user.first_name}")
-                async for message in client.iter_messages(user, limit=100):  # Limit to last 100 messages
-                    if message.photo:
-                        print(f"Found image in chat with {user.first_name}")
-                        await client.send_file(group_entity, message.photo)
-                        break  # Stop after finding first image
-                
         print("All operations completed successfully")
         
     except Exception as e:
         print(f"An error occurred: {str(e)}")
         import traceback
         traceback.print_exc()
-# Example usage:
-# async def main():
-#     # List of telegram usernames to add to the group
-#     usernames = ["@user1", "@user2", "@user3"]
-#     # Message to send to the new group
-#     welcome_message = "Welcome to our new group! 👋"
-#     # Optional custom group title (defaults to "New Group")
-#     group_name = "Project Discussion Group"
-#     
-#     try:
-#         await send_group_message(usernames, welcome_message, group_name)
-#     except Exception as e:
-#         print(f"Error creating group: {str(e)}")
-#
-# # Run the async function
-# client.loop.run_until_complete(main())
-
 
 async def copy_google_doc_template(company_name, emails):
     """Copy a Google Doc template and return the link to the new document."""
@@ -768,209 +820,6 @@ def get_list_entries_by_stage(headers, list_name, stage_name):
 # Example usage:
 # companies = get_list_entries_by_stage(headers, "Layer", "Email Sent")
 
-def get_company_telegram_handles(company_identifier, headers, is_id=False):
-    """Get telegram handles for employees of a company."""
-    url = "https://api.attio.com/v2/objects/people/records/query"
-    
-    try:
-        # First get all companies to ensure we find the right one
-        print("\nFetching all companies...")
-        all_companies = fetch_all_companies(headers)
-        if not all_companies:
-            print("Error fetching companies")
-            return None
-            
-        # Find the company and get all its domains
-        company_name = None
-        company_domains = set()
-        
-        for company in all_companies:
-            values = company.get('values', {})
-            name_list = values.get('name', [])
-            name = name_list[0].get('value', '') if name_list else ''
-            
-            # Match by ID or name
-            if (is_id and company['id']['record_id'] == company_identifier) or \
-               (not is_id and name and name.lower() == company_identifier.lower()):
-                company_name = name
-                domains = values.get('domains', [])
-                for domain in domains:
-                    domain_name = domain.get('domain')
-                    if domain_name:
-                        company_domains.add(domain_name)
-                company_domains.update([
-                    f"{name.strip().lower()}.com",
-                    f"{name.strip().lower()}.xyz",
-                    f"{name.strip().lower()}.io"
-                ])
-                break
-            
-        if not company_name:
-            print(f"Could not find company: {company_identifier}")
-            return None
-            
-        print(f"\nFound company: {company_name}")
-        print(f"Looking for domains: {sorted(company_domains)}")
-        
-        # Get all people using pagination
-        print("\nFetching all people records...")
-        all_people = []
-        offset = 0
-        limit = 500
-        
-        while True:
-            payload = {
-                "include_values": ["name", "email_addresses", "telegram"],
-                "pagination": {
-                    "limit": limit,
-                    "offset": offset
-                }
-            }
-            
-            response = requests.post(url, headers=headers, json=payload)
-            response.raise_for_status()
-            data = response.json()
-            
-            people_batch = data.get('data', [])
-            if not people_batch:
-                break
-                
-            all_people.extend(people_batch)
-            print(f"Fetched {len(all_people)} people records...")
-            
-            if len(people_batch) < limit:
-                break
-                
-            offset += len(people_batch)
-        
-        # Analyze domains from all people
-        print("\nAnalyzing email domains...")
-        all_domains = set()
-        domain_count = 0
-        for record in all_people:
-            email_addresses = record.get('values', {}).get('email_addresses', [])
-            for email in email_addresses:
-                domain = email.get('email_domain')
-                if domain:
-                    all_domains.add(domain)
-                    domain_count += 1
-        
-        print(f"Total email domains found: {domain_count}")
-        print(f"Unique domains found: {len(all_domains)}")
-        print("All domains:", sorted(all_domains))
-        
-        # Find matching people
-        telegram_info = []
-        for record in all_people:
-            values = record.get('values', {})
-            email_addresses = values.get('email_addresses', [])
-            
-            matching_domains = [
-                email.get('email_domain') for email in email_addresses
-                if email.get('email_domain') in company_domains
-            ]
-            
-            if matching_domains:
-                telegram_entries = values.get('telegram', [])
-                if telegram_entries:
-                    telegram = telegram_entries[0].get('value')
-                    if telegram:
-                        name_entries = values.get('name', [])
-                        full_name = 'Unknown'
-                        if name_entries:
-                            name_data = name_entries[0]
-                            first_name = name_data.get('first_name', '')
-                            last_name = name_data.get('last_name', '')
-                            full_name = name_data.get('full_name') or f"{first_name} {last_name}".strip()
-                        
-                        telegram_info.append({
-                            'handle': telegram,
-                            'name': full_name,
-                            'email_domain': matching_domains[0],
-                            'company_name': company_name
-                        })
-        
-        if telegram_info:
-            print(f"\nFound {len(telegram_info)} telegram handles for {company_name}:")
-            for info in telegram_info:
-                print(f"Name: {info['name']}")
-                print(f"Telegram: @{info['handle']}")
-                print(f"Email Domain: {info['email_domain']}")
-                print("-" * 50)
-        else:
-            print(f"\nNo telegram handles found for {company_name}")
-            
-        return telegram_info
-        
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching telegram handles: {str(e)}")
-        if hasattr(e, 'response') and e.response is not None:
-            print("Response:", e.response.text)
-        return None
-# Example usage:
-# Get telegram handles for a single company
-# telegram_handles = get_company_telegram_handles("Company Name", headers)
-
-# Get telegram handles for multiple companies
-# companies = [
-#     {"company_name": "Company 1"},
-#     {"company_name": "Company 2"}
-# ]
-# all_handles = get_company_telegrams(companies, headers)
-
-# Get telegram handles by company ID
-# telegram_handles = get_company_telegram_handles("company_id", headers, is_id=True)
-
-
-def get_company_telegrams(companies, headers):
-    """Get telegram handles for a list of companies."""
-    all_telegram_handles = []
-    
-    # Handle both list of companies and single company name
-    if isinstance(companies, str):
-        companies = [{'company_name': companies}]
-    elif not isinstance(companies, list):
-        print("Invalid input: companies must be a string or list of companies")
-        return None
-
-    print("\nFetching telegram handles for companies...")
-    for company in companies:
-        # Handle both name and ID based company objects
-        company_name = company.get('company_name') or company.get('name')
-        company_id = company.get('company_id') or company.get('id')
-        
-        if not company_name:
-            # If no name found, try to get it from ID
-            company_name = get_company_name(company_id, headers)
-            
-        print(f"\nLooking up telegram handles for {company_name}:")
-        telegram_handles = get_company_telegram_handles(company_name, headers)
-        
-        if telegram_handles:
-            all_telegram_handles.extend([{
-                'company_name': company_name,
-                'company_id': company_id,
-                'telegram_handle': handle['handle'],
-                'person_name': handle['name']
-            } for handle in telegram_handles])
-    
-    if all_telegram_handles:
-        print("\nAll Telegram Handles Found:")
-        print("-" * 50)
-        for handle in all_telegram_handles:
-            print(f"Company: {handle['company_name']}")
-            print(f"Person: {handle['person_name']}")
-            print(f"Telegram: @{handle['telegram_handle']}")
-            print("-" * 50)
-    
-    return all_telegram_handles
-# Usage example:
-# Get companies from list
-# companies = get_list_entries_by_stage(headers, "Layer", "Email Sent")
-# print(companies)
-# # Then get their telegram handles if needed
-# if companies:
-#     telegram_handles = get_company_telegrams(companies, headers)
 
 def get_list_id_by_name(list_name, headers):
     """Get list ID from list name (case insensitive)."""
@@ -1171,3 +1020,700 @@ def get_company_id_by_name(company_name, headers):
 # company_id = get_company_id_by_name("DxPool", headers)
 
 
+def get_company_telegram_handles_by_id(company_id, headers):
+    """Get telegram handles for a company using its ID."""
+    try:
+        # Get company record
+        url = f"https://api.attio.com/v2/objects/companies/records/{company_id}"
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        company_data = response.json().get('data', {})
+        
+        # Get company name from values
+        name_values = company_data.get('values', {}).get('name', [])
+        company_name = name_values[0].get('value', 'Unknown') if name_values else 'Unknown'
+        
+        print(f"\nLooking up Telegram handles for {company_name} (ID: {company_id})")
+        
+        # Get team members from company record
+        team_values = company_data.get('values', {}).get('team', [])
+        team_member_ids = [member.get('target_record_id') for member in team_values if member.get('target_record_id')]
+        
+        telegram_handles = []
+        for member_id in team_member_ids:
+            # Get person record
+            person_url = f"https://api.attio.com/v2/objects/people/records/{member_id}"
+            person_response = requests.get(person_url, headers=headers)
+            person_response.raise_for_status()
+            person_data = person_response.json().get('data', {})
+            person_values = person_data.get('values', {})
+            
+            # Get name
+            name_list = person_values.get('name', [])
+            name = name_list[0].get('value', '') if name_list else 'Unknown'
+            
+            # Get telegram handle
+            telegram_list = person_values.get('telegram', [])
+            telegram = telegram_list[0].get('value', '').lstrip('@') if telegram_list else None
+            
+            # Get email addresses
+            email_list = person_values.get('email_addresses', [])
+            email_domain = email_list[0].get('email_domain', '') if email_list else ''
+            
+            if telegram:
+                telegram_handles.append({
+                    'name': name,
+                    'handle': telegram,
+                    'email_domain': email_domain
+                })
+        
+        return telegram_handles
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching telegram handles: {str(e)}")
+        if hasattr(e, 'response') and e.response is not None:
+            print("Response:", e.response.text)
+        return None
+
+
+def get_entry_attribute_value(list_id, entry_id, attribute_title, headers):
+    """Get a specific attribute value for a list entry using the attribute title."""
+    try:
+        # First get all attributes for the list to find the slug
+        attributes_url = f"https://api.attio.com/v2/lists/{list_id}/attributes"
+        attributes_response = requests.get(attributes_url, headers=headers)
+        attributes_response.raise_for_status()
+        
+        # Find the attribute with matching title (case insensitive)
+        attributes = attributes_response.json().get('data', [])
+        target_attribute = next(
+            (attr for attr in attributes if attr.get('title', '').lower() == attribute_title.lower()),
+            None
+        )
+        
+        if not target_attribute:
+            print(f"Attribute '{attribute_title}' not found")
+            return None
+            
+        attribute_slug = target_attribute.get('api_slug')
+        
+        if not attribute_slug:
+            print(f"No API slug found for attribute '{attribute_title}'")
+            return None
+        
+        # Get the attribute value using the correct endpoint
+        url = f"https://api.attio.com/v2/lists/{list_id}/entries/{entry_id}/attributes/{attribute_slug}/values"
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        
+        # Get the value from the response
+        values = response.json().get('data', [])
+        
+        if values:
+            # Get the most recent value
+            latest_value = values[0]
+            return latest_value.get('value')
+            
+        return None
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Error getting attribute value: {str(e)}")
+        if hasattr(e, 'response') and e.response is not None:
+            print("Response:", e.response.text)
+        return None
+
+
+async def create_mous():
+    """Create MoUs for companies in Layer list with 'Email Sent' status."""
+    try:
+        # Get companies from Layer list with Email Sent status
+        companies = get_companies_by_list_status("Layer", "Email Sent", headers)
+        
+        if not companies:
+            print("No companies found with 'Email Sent' status")
+            return
+            
+        print("\nProcessing companies for MoU creation:")
+        print("-" * 70)
+        
+        for company in companies:
+            print(f"\nProcessing {company['company_name']}:")
+            
+            # Check if document already exists
+            existing_docs = drive_service.files().list(
+                q=f"mimeType='application/vnd.google-apps.document' and name contains '{company['company_name']}'",
+                spaces='drive',
+                fields='files(id, name)'
+            ).execute()
+            
+            if existing_docs.get('files'):
+                print(f"Document already exists for {company['company_name']}")
+                print("Updating status to 'Docusign Created'...")
+                
+                # Update status using the correct list_id and entry_id
+                list_id = get_list_id_by_name("Layer", headers)  # Get list ID
+                result = update_entry_stage(
+                    list_id,
+                    company['entry_id'],
+                    "Docusign Created",
+                    headers
+                )
+                
+                if result:
+                    print("Status updated successfully!")
+                    for doc in existing_docs.get('files', []):
+                        print(f"Document: {doc['name']}")
+                        print(f"Link: https://docs.google.com/document/d/{doc['id']}/edit")
+                else:
+                    print("Failed to update status")
+                continue
+            
+            # Get spokesperson name
+            list_id = get_list_id_by_name("Layer", headers)  # Get list ID
+            spokesperson = get_entry_attribute_value(
+                list_id,
+                company['entry_id'],
+                "Spokesperson Name",
+                headers
+            )
+            
+            if spokesperson:
+                print(f"Spokesperson: {spokesperson}")
+                
+                try:
+                    # Create MoU
+                    doc_link = await copy_and_share_document(
+                        "1iwZ3i6sD8bWwTml2WWdeWBL0y6Q1tiRNP03qhS1UL2s",  # Template ID
+                        company['company_name'],
+                        spokesperson
+                    )
+                    
+                    if doc_link:
+                        print("MoU created successfully!")
+                        print(f"Document link: {doc_link}")
+                        
+                        # Update status to Docusign Created
+                        result = update_entry_stage(
+                            list_id,
+                            company['entry_id'],
+                            "Docusign Created",
+                            headers
+                        )
+                        
+                        if result:
+                            print("Status updated successfully!")
+                        else:
+                            print("Failed to update status")
+                    
+                except Exception as e:
+                    print(f"Error creating MoU: {str(e)}")
+            else:
+                print(f"Skipping {company['company_name']} - No spokesperson name found")
+            
+            print("-" * 70)
+            
+    except Exception as e:
+        print(f"Error in create_mous: {str(e)}")
+        print("Company data:", company if 'company' in locals() else "Not available")
+
+# Run the async function
+# client.loop.run_until_complete(create_mous())
+
+
+def connect_to_docusign():
+    """Connect to DocuSign API using JWT Grant authentication."""
+    try:
+        # Load DocuSign credentials from config file
+        with open('docusign.json') as f:
+            ds_config = json.load(f)
+        
+        # Initialize API client
+        api_client = ApiClient()
+        api_client.set_base_path(ds_config['base_path'])
+        api_client.set_oauth_host_name(ds_config['auth_server'])
+        
+        try:
+            # Get JWT token
+            token = api_client.request_jwt_user_token(
+                client_id=ds_config['client_id'],
+                user_id=ds_config['impersonated_user_id'],
+                oauth_host_name=ds_config['auth_server'],
+                private_key_bytes=ds_config['private_key'].encode('utf-8'),
+                expires_in=3600,
+                scopes=["signature", "impersonation"]
+            )
+            
+            # Get user info and account details
+            user_info = api_client.get_user_info(token.access_token)
+            accounts = user_info.get_accounts()
+            account = accounts[0]  # Get first account
+            
+            # Update base path with account-specific endpoint
+            base_path = f"{account.base_uri}/restapi"
+            api_client.host = base_path
+            
+            # Set authorization header
+            api_client.set_default_header(
+                header_name="Authorization",
+                header_value=f"Bearer {token.access_token}"
+            )
+            
+            # Create envelope API instance
+            envelope_api = EnvelopesApi(api_client)
+            
+            print("Successfully connected to DocuSign API")
+            print(f"Account ID: {account.account_id}")
+            print(f"Base Path: {base_path}")
+            
+            return api_client, envelope_api
+            
+        except Exception as e:
+            if 'consent_required' in str(e):
+                consent_url = (
+                    f"https://{ds_config['auth_server']}/oauth/auth"
+                    f"?response_type=code"
+                    f"&scope=signature%20impersonation"
+                    f"&client_id={ds_config['client_id']}"
+                    f"&redirect_uri=https://developers.docusign.com/platform/auth/consent"
+                )
+                print("\nConsent required. Please visit this URL to grant consent:")
+                print(consent_url)
+            print(f"JWT authentication error: {str(e)}")
+            return None, None
+            
+    except Exception as e:
+        print(f"Error connecting to DocuSign: {str(e)}")
+        return None, None
+
+
+
+def send_document_for_signature(envelope_api, account_id, signer_email, signer_name, doc_path, doc_name=None):
+    """Send a document for signature via DocuSign."""
+    try:
+        # Read the PDF file
+        with open(doc_path, 'rb') as file:
+            doc_bytes = file.read()
+        
+        # Create document object
+        document = Document(
+            document_base64=base64.b64encode(doc_bytes).decode('utf-8'),
+            name=doc_name or 'Operator Memorandum of Understanding',  # Use doc_name if provided
+            file_extension='pdf',
+            document_id='1'
+        )
+        
+        # Create signer object with anchor tab
+        sign_here = SignHere(
+            anchor_string='[Signatory]',
+            anchor_units='pixels',
+            anchor_y_offset='10',
+            anchor_x_offset='20',
+            tab_label='SignHereTab'
+        )
+        
+        # Create tabs object
+        tabs = Tabs(sign_here_tabs=[sign_here])
+        
+        # Create signer with tabs
+        signer = Signer(
+            email=signer_email,
+            name=signer_name,
+            recipient_id='1',
+            routing_order='1',
+            tabs=tabs
+        )
+        
+        # Create recipients object
+        recipients = Recipients(signers=[signer])
+        
+        # Create envelope definition
+        envelope_definition = EnvelopeDefinition(
+            email_subject='Please sign the Layer Operator Memorandum of Understanding',
+            email_blurb='Please review and sign this document at your earliest convenience.',
+            documents=[document],
+            recipients=recipients,
+            status='sent'
+        )
+        
+        try:
+            envelope_summary = envelope_api.create_envelope(
+                account_id=account_id,
+                envelope_definition=envelope_definition
+            )
+            
+            print(f"\nDocument sent successfully!")
+            print(f"Envelope ID: {envelope_summary.envelope_id}")
+            return envelope_summary.envelope_id
+            
+        except ApiException as e:
+            print(f"\nError creating envelope: {e}")
+            print(f"Response body: {e.body}")
+            return None
+            
+    except Exception as e:
+        print(f"Error preparing document: {str(e)}")
+        if hasattr(e, 'response') and e.response is not None:
+            print("Response:", e.response.text)
+        return None
+
+
+def test_docusign_integration():
+    """Run 20 successful test calls to DocuSign."""
+    api_client, envelope_api = connect_to_docusign()
+    
+    if api_client and envelope_api:
+        try:
+            # Get account ID
+            user_info = api_client.get_user_info(api_client.default_headers['Authorization'].split(' ')[1])
+            account_id = user_info.get_accounts()[0].account_id
+            
+            print("\nRunning 20 test calls...")
+            successful_calls = 0
+            
+            for i in range(20):
+                try:
+                    # Create unique document name for each test
+                    doc_name = f"Test Document {i+1} - {datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                    
+                    # Send test document
+                    envelope_id = send_document_for_signature(
+                        envelope_api=envelope_api,
+                        account_id=account_id,
+                        signer_email="adithya@lay3rlabs.io",
+                        signer_name="Adithya Kumar",
+                        doc_path="Operator Memorandum of Understanding - SenseiNode.pdf",
+                        doc_name=doc_name  # Pass unique name
+                    )
+                    
+                    if envelope_id:
+                        successful_calls += 1
+                        print(f"\nTest {i+1}/20 successful!")
+                        print(f"Document: {doc_name}")
+                        print(f"Envelope ID: {envelope_id}")
+                    else:
+                        print(f"\nTest {i+1}/20 failed")
+                    
+                    # Add delay between calls
+                    time.sleep(2)  # Wait 2 seconds between calls
+                        
+                except Exception as e:
+                    print(f"\nError in test {i+1}: {str(e)}")
+                    
+            print(f"\nCompleted {successful_calls}/20 successful calls")
+            return successful_calls == 20
+            
+        except Exception as e:
+            print(f"Error in test setup: {str(e)}")
+            return False
+    
+    return False
+
+# Run the tests
+# success = test_docusign_integration()
+# if success:
+#     print("\nAll test calls successful! Ready for go-live.")
+# else:
+#     print("\nSome tests failed. Please review errors before go-live.")
+
+async def check_existing_group_chat(company1_name, company2_name):
+    """Check if a group chat already exists between two companies."""
+    try:
+        # Check both naming patterns
+        pattern1 = f"{company1_name} <> {company2_name}"
+        pattern2 = f"{company2_name} <> {company1_name}"
+        
+        print(f"\nChecking for existing group chats:")
+        print(f"Pattern 1: {pattern1}")
+        print(f"Pattern 2: {pattern2}")
+        
+        # Get all dialogs and filter for groups
+        async for dialog in client.iter_dialogs():
+            if dialog.is_group:
+                if dialog.title == pattern1 or dialog.title == pattern2:
+                    print(f"\nFound existing group: {dialog.title}")
+                    return True, dialog.entity, dialog.title
+        
+        print("\nNo existing group chat found")
+        return False, None, None
+        
+    except Exception as e:
+        print(f"Error checking for existing group chat: {str(e)}")
+        return False, None, None
+
+async def create_company_group_chat(company1, company2, intro_message=None, is_id=False, headers=None):
+    """Create a group chat between two companies' telegram users.
+    
+    Args:
+        company1: First company name or ID
+        company2: Second company name or ID
+        intro_message: Custom introduction message (optional)
+        is_id: Whether inputs are IDs (True) or names (False)
+        headers: API headers for Attio
+    """
+    try:
+        # Get company names (if IDs provided) or use names directly
+        company1_name = get_company_name(company1, headers) if is_id else company1
+        company2_name = get_company_name(company2, headers) if is_id else company2
+        
+        # Check for existing group chat first
+        exists, existing_chat, pattern = await check_existing_group_chat(company1_name, company2_name)
+        if exists:
+            print(f"\nGroup chat already exists: {pattern}")
+            print("Please use the existing group")
+            return False
+            
+        # Only look up company IDs if we need to create a new group
+        company1_id = company1 if is_id else get_company_id_by_name(company1, headers)
+        company2_id = company2 if is_id else get_company_id_by_name(company2, headers)
+        
+        if not company1_id or not company2_id:
+            print("Could not find one or both companies")
+            return False
+            
+        # Get telegram handles for both companies
+        handles1 = get_company_telegram_handles_by_id(company1_id, headers)
+        handles2 = get_company_telegram_handles_by_id(company2_id, headers)
+        
+        if not handles1 and not handles2:
+            print("No telegram handles found for either company")
+            return False
+            
+        # Combine all telegram handles
+        all_handles = []
+        
+        print(f"\nTelegram handles for {company1_name}:")
+        for handle in handles1 or []:
+            print(f"@{handle['handle']} ({handle['name']})")
+            all_handles.append(f"@{handle['handle']}")
+            
+        print(f"\nTelegram handles for {company2_name}:")
+        for handle in handles2 or []:
+            print(f"@{handle['handle']} ({handle['name']})")
+            all_handles.append(f"@{handle['handle']}")
+            
+        if not all_handles:
+            print("No telegram handles to add to group")
+            return False
+            
+        # Create group with new naming pattern
+        group_name = f"{company1_name} <> {company2_name}"
+        welcome_message = intro_message or f"Welcome to the group chat for {company1_name} and {company2_name}! 👋"
+        
+        print(f"\nCreating group chat: {group_name}")
+        await send_group_message(all_handles, welcome_message, group_name)
+        return True
+        
+    except Exception as e:
+        print(f"Error creating group chat: {str(e)}")
+        return False
+
+
+# # Example usage:
+# api_client, envelope_api = connect_to_docusign()
+# if api_client and envelope_api:
+#     print("Ready to create and send envelopes")
+
+# # Send the SenseiNode MoU
+# if api_client and envelope_api:
+#     try:
+#         # Get account ID from user info
+#         user_info = api_client.get_user_info(api_client.default_headers['Authorization'].split(' ')[1])
+#         account_id = user_info.get_accounts()[0].account_id
+        
+#         # Send document
+#         envelope_id = send_document_for_signature(
+#             envelope_api=envelope_api,
+#             account_id=account_id,
+#             signer_email="adithya@outerscope.xyz",
+#             signer_name="Adithya Kumar",
+#             doc_path="Operator Memorandum of Understanding - SenseiNode.pdf"
+#         )
+        
+#         if envelope_id:
+#             print("MoU sent for signature successfully!")
+            
+#     except Exception as e:
+#         print(f"Error sending document: {str(e)}")
+
+async def get_telegram_folders():
+    """Helper function to get all Telegram folders."""
+    try:
+        result = await client(functions.messages.GetDialogFiltersRequest())
+        folders = []
+        
+        for folder in result.filters:
+            if isinstance(folder, DialogFilter):
+                folders.append({
+                    'title': folder.title,
+                    'id': folder.id,
+                    'filter': folder
+                })
+        return folders
+    except Exception as e:
+        print(f"Error getting folders: {str(e)}")
+        return None
+
+async def add_chat_to_folder(chat_identifier, folder_name):
+    """Add a chat (group or individual) to a Telegram folder."""
+    try:
+        # Get the chat entity
+        chat = await client.get_entity(chat_identifier)
+        
+        # Convert chat to InputPeer
+        if hasattr(chat, 'channel_id'):
+            input_peer = InputPeerChannel(chat.id, chat.access_hash)
+            chat_title = chat.title
+        elif hasattr(chat, 'chat_id'):
+            input_peer = InputPeerChat(chat.id)
+            chat_title = chat.title
+        else:
+            input_peer = InputPeerUser(chat.id, chat.access_hash)
+            # For users, combine first and last name
+            chat_title = f"{getattr(chat, 'first_name', '')} {getattr(chat, 'last_name', '')}".strip()
+
+        # Get all folders
+        folders = await get_telegram_folders()
+        if not folders:
+            print("No folders found")
+            return False
+
+        # Find the target folder
+        target_folder = next((f for f in folders if f['title'].lower() == folder_name.lower()), None)
+        if not target_folder:
+            print(f"Folder '{folder_name}' not found")
+            return False
+
+        print(f"\nFound folder: {target_folder['title']} (ID: {target_folder['id']})")
+        print(f"Adding chat: {chat_title}")
+        
+        # Get current folder settings and add the new chat
+        current_filter = target_folder['filter']
+        include_peers = list(current_filter.include_peers)
+        
+        # Add the new peer if it's not already in the list
+        if input_peer not in include_peers:
+            include_peers.append(input_peer)
+        
+        # Create updated filter
+        updated_filter = DialogFilter(
+            id=current_filter.id,
+            title=current_filter.title,
+            pinned_peers=current_filter.pinned_peers,
+            include_peers=include_peers,
+            exclude_peers=current_filter.exclude_peers
+        )
+        
+        # Update the folder
+        await client(UpdateDialogFilterRequest(
+            id=updated_filter.id,
+            filter=updated_filter
+        ))
+        
+        print(f"Successfully added {chat_title} to folder {folder_name}")
+        return True
+        
+    except Exception as e:
+        print(f"Error adding chat to folder: {str(e)}")
+        return False
+
+async def remove_from_folder(chat_identifier, folder_name):
+    """Remove a chat (group or individual) from a Telegram folder."""
+    try:
+        # Get the chat entity
+        chat = await client.get_entity(chat_identifier)
+        
+        # Convert chat to InputPeer
+        if hasattr(chat, 'channel_id'):
+            input_peer = InputPeerChannel(chat.id, chat.access_hash)
+            chat_title = chat.title
+        elif hasattr(chat, 'chat_id'):
+            input_peer = InputPeerChat(chat.id)
+            chat_title = chat.title
+        else:
+            input_peer = InputPeerUser(chat.id, chat.access_hash)
+            chat_title = f"{getattr(chat, 'first_name', '')} {getattr(chat, 'last_name', '')}".strip()
+
+        # Get all folders
+        folders = await get_telegram_folders()
+        if not folders:
+            print("No folders found")
+            return False
+
+        # Find the target folder
+        target_folder = next((f for f in folders if f['title'].lower() == folder_name.lower()), None)
+        if not target_folder:
+            print(f"Folder '{folder_name}' not found")
+            return False
+
+        print(f"\nFound folder: {target_folder['title']} (ID: {target_folder['id']})")
+        print(f"Removing chat: {chat_title}")
+        
+        # Get current folder settings and remove the chat
+        current_filter = target_folder['filter']
+        include_peers = list(current_filter.include_peers)
+        
+        # Remove the peer if it's in the list
+        if input_peer in include_peers:
+            include_peers.remove(input_peer)
+            
+            # Create updated filter
+            updated_filter = DialogFilter(
+                id=current_filter.id,
+                title=current_filter.title,
+                pinned_peers=current_filter.pinned_peers,
+                include_peers=include_peers,
+                exclude_peers=current_filter.exclude_peers
+            )
+            
+            # Update the folder
+            await client(UpdateDialogFilterRequest(
+                id=updated_filter.id,
+                filter=updated_filter
+            ))
+            
+            print(f"Successfully removed {chat_title} from folder {folder_name}")
+            return True
+        else:
+            print(f"Chat {chat_title} was not found in folder {folder_name}")
+            return False
+        
+    except Exception as e:
+        print(f"Error removing chat from folder: {str(e)}")
+        return False
+
+# add_chat_to_folder("NodeOps <> Layer", "Layer")
+
+async def main():
+    # Get all companies with gaming tag
+    gaming_companies = fetch_all_companies(headers, filter_tag="Gaming")
+    
+    if gaming_companies:
+        # Custom intro message
+        intro = """Hey everyone! 👋
+
+This is a group chat for gaming companies to discuss integration with Octane. We'll be discussing:
+• Technical requirements
+• Integration timeline
+• Support and resources
+
+Let's get started! 🎮"""
+        
+        # Create group chats between Octane and each gaming company
+        for company in gaming_companies:
+            success = await create_company_group_chat(
+                "Octane",
+                company['name'],
+                intro_message=intro,
+                headers=headers
+            )
+            if success:
+                print(f"Created group chat with {company['name']}")
+            else:
+                print(f"Failed to create group chat with {company['name']}")
+            
+            # Random delay between 5-10 seconds
+            delay = random.uniform(5, 10)
+            await asyncio.sleep(delay)
+
+# Run the async function
+client.loop.run_until_complete(main())

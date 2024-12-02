@@ -6,3 +6,6 @@ google.json
 *.session
 secrets.json
 googledrive.json
+*.json
+*.pdf
+.venv/
