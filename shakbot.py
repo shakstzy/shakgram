@@ -1682,38 +1682,42 @@ async def remove_from_folder(chat_identifier, folder_name):
         return False
 
 # add_chat_to_folder("NodeOps <> Layer", "Layer")
-
 async def main():
-    # Get all companies with gaming tag
-    gaming_companies = fetch_all_companies(headers, filter_tag="Gaming")
-    
-    if gaming_companies:
-        # Custom intro message
-        intro = """Hey everyone! 👋
+    # Run the MoU creation process
+    await create_mous()  # This function already has all the logic we need:
 
-This is a group chat for gaming companies to discuss integration with Octane. We'll be discussing:
-• Technical requirements
-• Integration timeline
-• Support and resources
-
-Let's get started! 🎮"""
-        
-        # Create group chats between Octane and each gaming company
-        for company in gaming_companies:
-            success = await create_company_group_chat(
-                "Octane",
-                company['name'],
-                intro_message=intro,
-                headers=headers
-            )
-            if success:
-                print(f"Created group chat with {company['name']}")
-            else:
-                print(f"Failed to create group chat with {company['name']}")
-            
-            # Random delay between 5-10 seconds
-            delay = random.uniform(5, 10)
-            await asyncio.sleep(delay)
-
-# Run the async function
 client.loop.run_until_complete(main())
+# async def main():
+#     # Get all companies with gaming tag
+#     gaming_companies = fetch_all_companies(headers, filter_tag="Gaming")
+    
+#     if gaming_companies:
+#         # Custom intro message
+#         intro = """Hey everyone! 👋
+
+# This is a group chat for gaming companies to discuss integration with Octane. We'll be discussing:
+# • Technical requirements
+# • Integration timeline
+# • Support and resources
+
+# Let's get started! 🎮"""
+        
+#         # Create group chats between Octane and each gaming company
+#         for company in gaming_companies:
+#             success = await create_company_group_chat(
+#                 "Octane",
+#                 company['name'],
+#                 intro_message=intro,
+#                 headers=headers
+#             )
+#             if success:
+#                 print(f"Created group chat with {company['name']}")
+#             else:
+#                 print(f"Failed to create group chat with {company['name']}")
+            
+#             # Random delay between 5-10 seconds
+#             delay = random.uniform(5, 10)
+#             await asyncio.sleep(delay)
+
+# # Run the async function
+# client.loop.run_until_complete(main())
