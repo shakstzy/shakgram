@@ -1682,11 +1682,11 @@ async def remove_from_folder(chat_identifier, folder_name):
         return False
 
 # add_chat_to_folder("NodeOps <> Layer", "Layer")
-async def main():
-    # Run the MoU creation process
-    await create_mous()  # This function already has all the logic we need:
+# async def main():
+#     # Run the MoU creation process
+#     await create_mous()  # This function already has all the logic we need:
 
-client.loop.run_until_complete(main())
+# client.loop.run_until_complete(main())
 # async def main():
 #     # Get all companies with gaming tag
 #     gaming_companies = fetch_all_companies(headers, filter_tag="Gaming")
@@ -1718,6 +1718,17 @@ client.loop.run_until_complete(main())
 #             # Random delay between 5-10 seconds
 #             delay = random.uniform(5, 10)
 #             await asyncio.sleep(delay)
+async def main():
+    # Create group chat between Cysic and Outerscope
+    success = await create_company_group_chat(
+        "CRMChat",
+        "Outerscope",
+        headers=headers
+    )
+    if success:
+        print("Created group chat between Cysic and Outerscope")
+    else:
+        print("Failed to create group chat between Cysic and Outerscope")
 
-# # Run the async function
-# client.loop.run_until_complete(main())
+# Run the async function
+client.loop.run_until_complete(main())
