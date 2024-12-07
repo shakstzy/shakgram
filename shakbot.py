@@ -1721,14 +1721,14 @@ async def remove_from_folder(chat_identifier, folder_name):
 async def main():
     # Create group chat between Cysic and Outerscope
     success = await create_company_group_chat(
-        "CRMChat",
+        "Cysic",
         "Outerscope",
         headers=headers
     )
     if success:
-        print("Created group chat between Cysic and Outerscope")
+        print("Created group chat between Chainsight and Outerscope")
     else:
-        print("Failed to create group chat between Cysic and Outerscope")
+        print("Failed to create group chat between Chainsight and Outerscope")
 
 # Run the async function
 client.loop.run_until_complete(main())
