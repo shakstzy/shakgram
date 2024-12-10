@@ -1718,17 +1718,17 @@ async def remove_from_folder(chat_identifier, folder_name):
 #             # Random delay between 5-10 seconds
 #             delay = random.uniform(5, 10)
 #             await asyncio.sleep(delay)
-async def main():
-    # Create group chat between Cysic and Outerscope
-    success = await create_company_group_chat(
-        "Cysic",
-        "Outerscope",
-        headers=headers
-    )
-    if success:
-        print("Created group chat between Chainsight and Outerscope")
-    else:
-        print("Failed to create group chat between Chainsight and Outerscope")
+# async def main():
+#     # Create group chat between Cysic and Outerscope
+#     success = await create_company_group_chat(
+#         "Layer",
+#         "Outerscope",
+#         headers=headers
+#     )
+#     if success:
+#         print("Created group chat between Chainsight and Outerscope")
+#     else:
+#         print("Failed to create group chat between Chainsight and Outerscope")
 
 # Run the async function
 client.loop.run_until_complete(main())
